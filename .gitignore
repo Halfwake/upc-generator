@@ -1,0 +1,12 @@
+*.dep
+*.zo
+compiled
+*~
+*.1
+*.2
+*.3
+*.swp
+*.bak
+*.dll
+*.a
+*.swp
