@@ -10,14 +10,8 @@
       image
       (image-apply ((car thunks) image) (cdr thunks))))
 
-(define-syntax (image-pipe stx)
-  (datum->syntax stx
-                 (match (syntax->datum stx)
-                   [(list _ image thunks ...)
-                    `(image-apply ,image (list ,@(map (lambda (thunk)
-                                                        `(lambda (image)
-                                                           ,thunk))
-                                                      thunks)))])))
+(define white-color (make-color 255 255 255))
+(define black-color (make-color 0 0 0))
 
 (define (generate-bar-code digits)
   (define bit-sequence-length 7)
@@ -52,45 +46,34 @@
     (match side
       ['left left-code]
       ['right right-code]))
-  (define (start-position-index position)
-    (sub1 (if (> position 5)
-              (+ (length side-guard-pattern) (* bit-sequence-length position))
-              (+ (length side-guard-pattern)
-                 (* bit-sequence-length (/ bit-sequence-amount 2))
-                 (length middle-guard-pattern)
-                 (* (- position 7) bit-sequence-length)))))
-  (define (place-bit image position)
-    (scene+line image position 0 position height (make-color 0 0 0)))   
-  (define (place-bit-sequence image bit-seq start-index)
-    (foldl (lambda (i image)
-             (define position (+ start-index i))
-             (if (zero? (list-ref bit-seq i))
-                 image
-                 (place-bit image position)))
-           image
-           (range (length bit-seq))))
-  (define (add-side-guards image)
-    (image-pipe
-     (place-bit image 0)
-     (place-bit image 2)
-     (place-bit image (- bits-in-barcode 1))
-     (place-bit image (- bits-in-barcode 3))))
-  (define (add-middle-guard image)
-    (define middle-guard-index 45)
-    (image-pipe
-     (place-bit image (+ middle-guard-index 1))
-     (place-bit image (+ middle-guard-index 3))))
-  (define (add-guards image)
-    (add-middle-guard (add-side-guards image)))
-  (define (add-number image value position)
-    (define side (if (> position 5) 'right 'left))
-    (place-bit-sequence image
-                        (bit-sequence->value value side)
-                        (start-position-index position)))
-  (define (add-numbers image digits)
-    (foldl (lambda (i image)
-             (add-number image (list-ref digits i) i))
-           image
-           (range bit-sequence-amount)))
-  (let ([base-image (rectangle bits-in-barcode height 'solid (make-color 255 255 255))])
-    (add-numbers (add-guards base-image) digits)))
+  (define (append-bit current-image bit)
+    (beside current-image
+            (rectangle 1 1 'solid (if (zero? bit)
+                                      white-color
+                                      black-color))))
+  (define (append-bit-sequence current-image bit-seq)
+    (foldl (lambda (bit image)
+             (append-bit image bit))
+           current-image
+           bit-seq))
+  (define (add-side-guard current-image)
+    (foldl (lambda (bit image)
+             (append-bit image bit))
+           current-image
+           side-guard-pattern))
+  (define (add-middle-guard current-image)
+    (foldl (lambda (bit image)
+             (append-bit image bit))
+           current-image
+           middle-guard-pattern))
+  (define (append-number image digit side)
+    (append-bit-sequence image
+                         (bit-sequence->value digit side)))
+  (let ([base-image (rectangle 0 1 'solid (make-color 255 255 255))])
+    (add-side-guard (foldl (lambda (digit image)
+                             (append-number image digit 'right))
+                           (add-middle-guard (foldl (lambda (digit image)
+                                                      (append-number image digit 'left))
+                                                    (add-side-guard base-image)
+                                                    (take digits 6)))
+                           (drop digits 6)))))
